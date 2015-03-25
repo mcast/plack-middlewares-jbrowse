@@ -1,9 +1,17 @@
-#! /usr/bin/env plackup
-# -*- cperl -*-
+#! /usr/bin/env perl
+
+use strict;
+exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless $^TAINT;
 
 # app.psgi
 use Plack::App::Directory;
-my ($root) = @ARGV;
-die "Syntax: $0 <webroot-dir>\n\nServe a directory via plackup\n"
-  unless 1 == @ARGV && -d $root && -r _;
-Plack::App::Directory->new({ root => $root })->to_app;
+my $root = shift @ARGV;
+die "Syntax: $0 <webroot-dir> [... plackup args ]\n\nServe a directory via plackup\n"
+  unless defined $root && -d $root && -r _;
+my $app = Plack::App::Directory->new({ root => $root })->to_app;
+
+# bin/plackup
+use Plack::Runner;
+my $runner = Plack::Runner->new;
+$runner->parse_options(@ARGV);
+$runner->run;
