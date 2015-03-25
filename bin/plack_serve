@@ -1,0 +1,9 @@
+#! /usr/bin/env plackup
+# -*- cperl -*-
+
+# app.psgi
+use Plack::App::Directory;
+my ($root) = @ARGV;
+die "Syntax: $0 <webroot-dir>\n\nServe a directory via plackup\n"
+  unless 1 == @ARGV && -d $root && -r _;
+Plack::App::Directory->new({ root => $root })->to_app;
