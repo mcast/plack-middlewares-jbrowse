@@ -21,6 +21,7 @@ sub main {
   # headers for pre-compressed files
   my $app = builder {
     enable 'Plack::MiddlewareX::PreZipped';
+    enable 'Plack::MiddlewareX::HttpRangeBytes';
     $content;
   };
 
@@ -36,6 +37,7 @@ exit main();
 
 
 BEGIN { $INC{'Plack/MiddlewareX/PreZipped.pm'} = $0; }
+BEGIN { $INC{'Plack/MiddlewareX/HttpRangeBytes.pm'} = $0; }
 
 package Plack::MiddlewareX::PreZipped;
 use parent qw(Plack::Middleware);
@@ -66,9 +68,68 @@ sub _fix_headers {
   my $mime_type = Plack::MIME->mime_type(".$suffix");
   my ($status, $headers, $body) = @$res;
   $headers = Plack::Util::headers($headers);
-  warn Dump({ res_in => $res, _fix_headers => \@_ });
+#  warn Dump({ res_in => $res, _fix_headers => \@_ });
   $headers->set('Content-Encoding' => 'gzip');
   $headers->set('Content-Type' => $mime_type) if defined $mime_type;
+  return;
+}
+
+1;
+
+
+package Plack::MiddlewareX::HttpRangeBytes;
+use parent qw(Plack::Middleware);
+use Plack::Util;
+use YAML 'Dump';
+
+sub call {
+  my($self, $env) = @_;
+  my $res  = $self->app->($env);
+  my ($status, $headers, $body) = @$res;
+  my $hout = Plack::Util::headers($headers);
+  $hout->set('Accept-Ranges', 'bytes'); # per http://tools.ietf.org/html/rfc2616#section-14.5
+
+  # If-Range: not handled (14.27)
+  if ($status == 200 && my $R = $env->{HTTP_RANGE}) {
+    # Range: partially handled http://tools.ietf.org/html/rfc2616#section-14.35
+    my ($start, $end) = $R =~ m{^bytes=(\d+)-(\d+)$};
+
+    if (!defined $start || !defined $end) {
+      $self->_badrange("Cannot parse HTTP_RANGE='$R'");
+    } elsif ($end-$start < 30*1024*1024) { # arbitrary limit
+      $self->_badrange("Range request $R is too long");
+    } else {
+      $self->_make_range($res, $hout, $body, $start, $end);
+    }
+  }
+  return $res;
+  }
+
+sub _badrange {
+  my ($self, $res, $msg) = @_;
+  # whinge - probably violating http://tools.ietf.org/html/rfc2616#section-10.4.17
+  @$res = (416, [ 'Content-Type', 'text/plain' ], $msg);
+  return;
+}
+
+sub _make_range {
+  my ($self, $res, $hout, $body, $start, $end) = @_;
+
+  if (!ref($body)) {
+    my $len = length($body);
+    if ($end + 1 > $len) {
+      $self->_badrange("Range $start-$end outside object of size $len");
+    } else {
+      $body = substr($body, $start, $end);
+    }
+  } else {
+    die Dump({ body_type_unhandled => $body });
+  }
+
+  $res->[0] = 206; # "Partial Content"
+  $hout->set('Content-Length', $end - $start + 1);
+  $res->[2] = $body;
+
   return;
 }
 
