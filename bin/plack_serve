@@ -5,7 +5,32 @@ use warnings;
 use Plack::Runner;
 use Plack::Builder;
 use Plack::App::Directory;
-use YAML 'Dump';
+
+=head1 NAME
+
+plack_serve - serve a directory of static files using Plack
+
+=head1 SYNOPSIS
+
+ $ plack_serve ~/www/site
+ HTTP::Server::PSGI: Accepting connections at http://0:5000/
+ [... access_log follows ...]
+
+=head1 DESCRIPTION
+
+This is a basic server for static files, implemented with pieces of
+L<Plack> and two extra L<Plack::Middleware> modules to deal with
+pre-zipped content and byte-range requests.
+
+It is enough to serve L<JBrowse|http://jbrowse.org/> v1.11.6 as I had
+it configured.
+
+=head1 CAVEATS
+
+This code is a quick bodge.
+
+
+=cut
 
 
 sub main {
@@ -36,13 +61,14 @@ sub main {
 exit main();
 
 
+# to appease Plack::Util::load_class's require, after inline modules compiled
 BEGIN { $INC{'Plack/MiddlewareX/PreZipped.pm'} = $0; }
 BEGIN { $INC{'Plack/MiddlewareX/HttpRangeBytes.pm'} = $0; }
 
 package Plack::MiddlewareX::PreZipped;
 use parent qw(Plack::Middleware);
 use Plack::Util;
-use YAML 'Dump';
+#use YAML 'Dump'; # for debug
 
 ### nginx.conf
 #
@@ -80,7 +106,7 @@ sub _fix_headers {
 package Plack::MiddlewareX::HttpRangeBytes;
 use parent qw(Plack::Middleware);
 use Plack::Util;
-use YAML 'Dump';
+use YAML 'Dump'; # for debug
 
 sub call {
   my($self, $env) = @_;
@@ -145,7 +171,7 @@ sub _make_range {
       die "Read $path at $start+$wantlen: want $wantlen, got $nread" unless $nread == $wantlen;
     }
   } else {
-    die Dump({ body_type_unhandled => $body });
+    die Dump({ body_type_unhandled => $body }); # XXX: lame
   }
 
   # selective compliance with http://tools.ietf.org/html/rfc2616#section-10.2.7
