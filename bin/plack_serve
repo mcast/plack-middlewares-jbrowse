@@ -1,19 +1,75 @@
 #! /usr/bin/env perl
-
 use strict;
+use warnings;
 
-# Taint.  /usr/bin/env can't do it for us.
-exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
-
-# app.psgi
-use Plack::App::Directory;
-my ($root) = (shift @ARGV) =~ /^(.*)$/;  # untaint - we trust ARGV
-die "Syntax: $0 <webroot-dir> [... plackup args ]\n\nServe a directory via plackup.  root=$root\n"
-  unless defined $root && -d $root && -r _;
-my $app = Plack::App::Directory->new({ root => $root })->to_app;
-
-# bin/plackup
 use Plack::Runner;
-my $runner = Plack::Runner->new(app => $app);
-$runner->parse_options(@ARGV);
-$runner->run;
+use Plack::Builder;
+use Plack::App::Directory;
+use YAML 'Dump';
+
+
+sub main {
+  # Taint.  /usr/bin/env can't do it for us.
+  exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
+
+  # app.psgi
+  my ($root) = (shift @ARGV) =~ /^(.*)$/;  # untaint - we trust ARGV
+  die "Syntax: $0 <webroot-dir> [... plackup args ]\n\nServe a directory via plackup.  root=$root\n"
+    unless defined $root && -d $root && -r _;
+  my $content = Plack::App::Directory->new({ root => $root })->to_app;
+
+  # headers for pre-compressed files
+  my $app = builder {
+    enable 'Plack::MiddlewareX::PreZipped';
+    $content;
+  };
+
+  # bin/plackup
+  my $runner = Plack::Runner->new(app => $app);
+  $runner->parse_options(@ARGV);
+  $runner->run;
+
+  return 0;
+}
+
+exit main();
+
+
+BEGIN { $INC{'Plack/MiddlewareX/PreZipped.pm'} = $0; }
+
+package Plack::MiddlewareX::PreZipped;
+use parent qw(Plack::Middleware);
+use Plack::Util;
+use YAML 'Dump';
+
+### nginx.conf
+#
+#        location ~* "\.(json|txt)z$" {
+#           add_header Content-Encoding  gzip;
+#           gzip off;
+#           types { application/json jsonz; }
+#        }
+
+sub call {
+  my($self, $env) = @_;
+  my $res  = $self->app->($env);
+  if ($env->{REQUEST_URI} =~ m{\.(json|txt)z$}) {
+    my $suffix = $1;
+    return Plack::Util::response_cb($res, sub { $self->_fix_headers($suffix, @_) });
+  } else {
+    return $res;
+  }
+}
+
+sub _fix_headers {
+  my ($self, $suffix, $res) = @_;
+  my $mime_type = Plack::MIME->mime_type(".$suffix");
+  my ($status, $headers, $body) = @$res;
+  $headers = Plack::Util::headers($headers);
+  warn Dump({ res_in => $res, _fix_headers => \@_ });
+  $headers->set('Content-Encoding' => 'gzip');
+  $headers->set('Content-Type' => $mime_type) if defined $mime_type;
+  return;
+}
+
+1;
