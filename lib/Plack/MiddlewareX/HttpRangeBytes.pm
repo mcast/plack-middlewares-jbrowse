@@ -1,7 +1,57 @@
 package Plack::MiddlewareX::HttpRangeBytes;
+use strict;
+use warnings;
+
 use parent qw(Plack::Middleware);
 use Plack::Util;
 use YAML 'Dump'; # for debug
+
+
+=head1 NAME
+
+Plack::MiddlewareX::HttpRangeBytes - serve part of a file
+
+=head1 SYNOPSIS
+
+  my $content = Plack::App::Directory->new({ root => $root })->to_app;
+
+  # headers for pre-compressed files
+  my $app = builder {
+    enable 'Plack::MiddlewareX::PreZipped';
+    enable 'Plack::MiddlewareX::HttpRangeBytes';
+    $content;
+  };
+
+=head1 DESCRIPTION
+
+This L<Plack::Middleware> module converts C<200 OK> responses to C<206
+Partial Content> responses, if the request specifies.
+
+It works with filehandles open for reading a file on disk, when
+restricted to a single byte range defined with numbers at both ends.
+This is enough to serve L<JBrowse|http://jbrowse.org/> v1.11.6 as I
+had it configured.
+
+=head1 CAVEATS
+
+Several parts of RFC2616 are ignored, only partially implemented or
+interpreted rather liberally.  I marked the code where I know I have
+done this.
+
+Implicit range endpoints (e.g. C<bytes -500> or C<bytes 500->) are not
+supported.
+
+The multipart media type C<multipart/byteranges> for multiple ranges
+is not supported.
+
+Partial responses from streams are unlikely to work.
+
+Partial responses from list-of-scalars is broken.
+
+There is no test suite.
+
+=cut
+
 
 sub call {
   my($self, $env) = @_;
@@ -45,7 +95,7 @@ sub _make_range {
   my $wantlen = $end - $start + 1;
   my $len;
 
-  if (!ref($body)) {
+  if (!ref($body)) { # XXX: craziness.  it will be a list of scalar!
     $len = length($body);
     if ($end + 1 > $len) {
       $self->_badrange($res, "Range $start-$end outside object of size $len");
