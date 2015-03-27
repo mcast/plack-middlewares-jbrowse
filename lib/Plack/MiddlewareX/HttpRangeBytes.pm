@@ -95,38 +95,54 @@ sub _make_range {
   my $wantlen = $end - $start + 1;
   my $len;
 
-  if (!ref($body)) { # XXX: craziness.  it will be a list of scalar!
-    $len = length($body);
+  if (ref($body) eq 'ARRAY' && 1 == @$body) { # XXX: need to allow multiple elements
+    $len = length($body->[0]);
     if ($end + 1 > $len) {
       $self->_badrange($res, "Range $start-$end outside object of size $len");
+      undef $len;
     } else {
-      $body = substr($body, $start, $end);
+      $body = [ substr($body->[0], $start, $len) ];
     }
   } elsif (Plack::Util::is_real_fh($body)) {
     my $fh = $body;
-    $len = -s $fh; # XXX: hoping it is not a stream
-
-    my $path = eval { $fh->can('path') } ? $fh->path : '[data]';
-    if ($end + 1 > $len) {
-      $self->_badrange($res, "Range $start-$end outside file size $len");
-    } else {
-      seek($fh, $start, 0) or die "Seek($path, $start, SEEK_SET): $!";
-      my $nread = read($fh, $body, $wantlen);
-      die "Read $path at $start+$wantlen: $!" unless defined $nread;
-      die "Read $path at $start+$wantlen: want $wantlen, got $nread" unless $nread == $wantlen;
-    }
+    $body = [];
+    $len = $self->_file_chunk($res, $fh, $body, $start, $end);
   } else {
     die Dump({ body_type_unhandled => $body }); # XXX: lame
   }
 
-  # selective compliance with http://tools.ietf.org/html/rfc2616#section-10.2.7
-  my $len_sfx = defined $len ? "/$len" : '';
-  $res->[0] = 206; # "Partial Content"
-  $hout->set('Content-Length', $wantlen);
-  $hout->set('Content-Range', "bytes $start-$end$len_sfx");
-  $res->[2] = [ $body ];
+  if (defined $len) { # i.e. we haven't called _badrange
+    # selective compliance with http://tools.ietf.org/html/rfc2616#section-10.2.7
+    my $len_sfx = defined $len ? "/$len" : '';
+    $res->[0] = 206; # "Partial Content"
+    $hout->set('Content-Length', $wantlen);
+    $hout->set('Content-Range', "bytes $start-$end$len_sfx");
+    $res->[2] = $body;
+  }
 
   return;
 }
+
+# modifies @$res or @$body
+sub _file_chunk {
+  my ($self, $res, $fh, $body, $start, $end) = @_;
+  my $wantlen = $end - $start + 1;
+  my $len = -s $fh; # XXX: hoping it is not a stream
+
+  my $path = eval { $fh->can('path') } ? $fh->path : '[data]';
+  if ($end + 1 > $len) {
+    $self->_badrange($res, "Range $start-$end outside file size $len");
+    return ();
+  } else {
+    seek($fh, $start, 0) or die "Seek($path, $start, SEEK_SET): $!";
+    my $txt = '';
+    my $nread = read($fh, $txt, $wantlen);
+    die "Read $path at $start+$wantlen: $!" unless defined $nread;
+    die "Read $path at $start+$wantlen: want $wantlen, got $nread" unless $nread == $wantlen;
+    push @$body, $txt;
+    return $len;
+  }
+}
+
 
 1;
