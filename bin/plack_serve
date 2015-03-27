@@ -2,12 +2,19 @@
 use strict;
 use warnings;
 
+BEGIN {
+  # Taint.  /usr/bin/env can't do it for us.
+#  use FindBin; unshift @INC, "$FindBin::RealBin/../lib" unless ${^TAINT}; # for run-from-clone
+  exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
+}
+
 use Plack::Runner;
 use Plack::Builder;
 use Plack::App::Directory;
 
 use Plack::MiddlewareX::PreZipped;
 use Plack::MiddlewareX::HttpRangeBytes;
+
 
 =head1 NAME
 
@@ -36,9 +43,6 @@ This code is a quick bodge.
 
 
 sub main {
-  # Taint.  /usr/bin/env can't do it for us.
-  exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
-
   # app.psgi
   my ($root) = (shift @ARGV) =~ /^(.*)$/;  # untaint - we trust ARGV
   die "Syntax: $0 <webroot-dir> [... plackup args ]\n\nServe a directory via plackup.  root=$root\n"
