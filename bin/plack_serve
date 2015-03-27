@@ -51,9 +51,11 @@ sub main {
 
   # headers for pre-compressed files
   my $app = builder {
+    # outermost = first call pre-response, last chance post-response
     enable 'Plack::MiddlewareX::PreZipped';
     enable 'Plack::MiddlewareX::HttpRangeBytes';
     $content;
+    # innermost = does its stuff, for the middlewares pre/post filter
   };
 
   # bin/plackup
