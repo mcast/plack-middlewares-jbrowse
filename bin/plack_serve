@@ -43,6 +43,8 @@ This code is a quick bodge.
 
 
 sub main {
+  $SIG{INT} = sub { die "Caught SIGINT\n" };
+
   # app.psgi
   my ($root) = (shift @ARGV) =~ /^(.*)$/;  # untaint - we trust ARGV
   die "Syntax: $0 <webroot-dir> [... plackup args ]\n\nServe a directory via plackup.  root=$root\n"
