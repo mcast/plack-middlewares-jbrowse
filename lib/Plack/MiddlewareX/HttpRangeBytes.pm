@@ -5,6 +5,7 @@ use warnings;
 use parent qw(Plack::Middleware);
 use Plack::Util;
 use YAML 'Dump'; # for debug
+use Time::HiRes qw( gettimeofday tv_interval );
 
 
 =head1 NAME
@@ -145,8 +146,34 @@ sub _make_range {
   return;
 }
 
-# modifies @$res or @$body
 sub _file_chunk {
+  my ($self, $res, $fh, $body, $start, $end) = @_;
+  my $t0 = [gettimeofday()];
+  my $len = _file_chunk_(@_);
+  my $t = tv_interval($t0);
+  $self->_perflog($t, $end-$start+1, $fh->path, $start, $len, sprintf('%d.%06d', @$t0))
+    if $res->[0] == 206
+    || Plack::Util::headers($res->[1])->get('Content-Type') !~
+    m{^(image/|text/javascript|text/html)};
+  return $len;
+}
+
+# Log the fetch-to-server in a format I use elsewhere
+sub _perflog {
+  my ($self, $t, $len, $fn, $offset,$totlen,$utstart) = @_;
+  my $logfn = "perftest-webserver.tsv";
+  if (!$self->{logfh}) {
+    open $$self{logfh}, '>', $logfn
+      or die "Create $logfn: $!";
+    print {$self->{logfh}} "t,fetchlen,fn,offset,totlen,unixtime_begin\n";
+  }
+  printf {$$self{logfh}} qq{%.5f\t%d\t"%s"%s\n},
+    $t, $len, $fn, join "\t", '', $offset, $totlen, $utstart;
+  return;
+}
+
+# modifies @$res or @$body
+sub _file_chunk_ {
   my ($self, $res, $fh, $body, $start, $end) = @_;
   my $wantlen = $end - $start + 1;
   my $len = -s $fh; # XXX: hoping it is not a stream
