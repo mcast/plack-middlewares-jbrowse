@@ -6,6 +6,7 @@ BEGIN {
   # Taint.  /usr/bin/env can't do it for us.
 #  use FindBin; unshift @INC, "$FindBin::RealBin/../lib" unless ${^TAINT}; # for run-from-clone
   exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
+  foreach ($0, @ARGV) { ($_) = /^(.*)$/ } # bulk untaint of trusted environment
 }
 
 use Plack::Runner;
