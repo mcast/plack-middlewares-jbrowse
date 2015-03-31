@@ -77,6 +77,12 @@ sub main {
   # headers for pre-compressed files
   my $app = builder {
     # outermost = first call pre-response, last chance post-response
+
+    # based on http://stackoverflow.com/questions/3354208/uri-for-includes-port-number-on-redirects/3354815#3354815
+    enable_if { $_[0]->{REMOTE_ADDR} eq '127.0.0.1' && $_[0]->{HTTP_X_FORWARDED_SCRIPT_NAME} }
+      "Plack::Middleware::ReverseProxyPath";
+    enable_if { $_[0]->{REMOTE_ADDR} eq '127.0.0.1' && $_[0]->{HTTP_X_FORWARDED_SCRIPT_NAME} }
+      "Plack::Middleware::ReverseProxy";
     enable 'Plack::MiddlewareX::PreZipped';
     enable 'Plack::MiddlewareX::HttpRangeBytes';
     $content;
