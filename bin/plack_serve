@@ -16,6 +16,7 @@ use Plack::App::Directory;
 use Plack::MiddlewareX::PreZipped;
 use Plack::MiddlewareX::HttpRangeBytes;
 use Plack::App::Debug::Snore;
+use Plack::App::PerfTest;
 
 
 =head1 NAME
@@ -85,6 +86,7 @@ sub main {
     enable_if { $_[0]->{REMOTE_ADDR} eq '127.0.0.1' && $_[0]->{HTTP_X_FORWARDED_SCRIPT_NAME} }
       "Plack::Middleware::ReverseProxy";
 
+    mount "/perftest" => Plack::App::PerfTest->new->to_app;
     mount "/sleep/" => Plack::App::Debug::Snore->new->to_app;
     enable 'Plack::MiddlewareX::PreZipped';
     enable 'Plack::MiddlewareX::HttpRangeBytes';
