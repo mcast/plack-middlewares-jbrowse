@@ -6,7 +6,7 @@ use parent 'Plack::Component';
 use URI;
 use YAML 'Dump';
 use HTML::Entities 'encode_entities';
-use File::Slurp qw( read_dir );
+use File::Slurp qw( read_dir slurp );
 
 # Spot configs, the CGP-2014 way of doing it; my copy of that
 our $JBROWSE_AUTOCONF = '/nfs/users/nfs_m/mca/gitwk-cgp/JBrowse-mca/autoconf';
@@ -127,7 +127,8 @@ sub _next {
   my @todo = grep { !defined $left{$_} } keys %left;
 
   my $test = $Q->{test};
-  if (!$Q->{test} || !@todo) {
+  $test = '' unless defined !$test;
+  if (!$test || !@todo) {
     # new test
     %left = ();
 
@@ -146,7 +147,14 @@ sub _findtest {
   my @conf = grep { -f "$JBROWSE_AUTOCONF/$_/trackList.json" }
     read_dir($JBROWSE_AUTOCONF);
   my $n = @conf;
-  return $conf[ int(rand($n)) ];
+  my $test;
+  while(!defined $test) {
+    $test = $conf[ int(rand($n)) ];
+    my $txt = slurp("$JBROWSE_AUTOCONF/$test/trackList.json");
+    # dev system is not presently available in irods lashup
+    undef $test if $txt =~ m{/nfs/cancer_trk-dev};
+  };
+  return $test;
 }
 
 sub _result {
@@ -169,6 +177,7 @@ sub __H {
 
 sub headfoot {
   my ($self, $body) = @_;
+  my $base = $self->base;
   $self->res->body(qq{<html><head>
       <title> CancerIT: JBrowse performance feedback tool </title>
       <style type="text/css">
@@ -204,9 +213,10 @@ sub headfoot {
    border-radius: 5px;
    border: thin black outset;
  }
+ h1 a { color: black }
       </style>
     </head>
-    <body>
+    <body> <h1> <a href="$base"> JBrowse PerfTest </a> </h1>
 $body
       <div class="contact">
         Contact <a href="mailto:mca\@sanger.ac.uk?subject=JBrowse.PerfTest">Matthew Astley</a>
@@ -217,7 +227,7 @@ $body
 
 sub hi {
   my ($self) = @_;
-  $self->headfoot(qq{ <h1> Hi </h1>
+  $self->headfoot(qq{ <h2> Hi </h2>
     <p> Thanks for coming to check on JBrowse performance. </p>
     <form method="get">
       <label> Please tell me your username so I can get back to you:
@@ -263,7 +273,7 @@ sub show {
       @form
       </form> </li>\n};
   }
-  $self->headfoot(qq{ <h1> Test @{[__H($test)]} </h1> $flash
+  $self->headfoot(qq{ <h2> Test on @{[__H($test)]} </h2> $flash
     <p> Please try each of these links (which will open in another tab) and let us know how they feel </p>
     <ul class="expts">
 @case
