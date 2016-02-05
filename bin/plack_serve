@@ -2,16 +2,26 @@
 use strict;
 use warnings;
 
-BEGIN {
-  # Taint.  /usr/bin/env can't do it for us.
+sub _maybe_run_from_clone {
   if (@ARGV && $ARGV[0] eq '-l' && !${^TAINT}) {
     # for run-from-clone
     require FindBin;
-    unshift @INC, "$FindBin::RealBin/../lib";
     shift @ARGV;
+    no warnings 'once';
+    unshift @INC, "$FindBin::RealBin/../lib";
   }
+  return;
+}
+
+sub _maybe_exec_tainted {
+  # Taint.  /usr/bin/env can't do it for us.
   exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
   foreach ($0, @ARGV) { ($_) = /^(.*)$/ } # bulk untaint of trusted environment
+}
+
+BEGIN {
+  _maybe_run_from_clone();
+  _maybe_exec_tainted();
 }
 
 use Plack::Runner;
