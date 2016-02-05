@@ -4,7 +4,12 @@ use warnings;
 
 BEGIN {
   # Taint.  /usr/bin/env can't do it for us.
-#  use FindBin; unshift @INC, "$FindBin::RealBin/../lib" unless ${^TAINT}; # for run-from-clone
+  if (@ARGV && $ARGV[0] eq '-l' && !${^TAINT}) {
+    # for run-from-clone
+    require FindBin;
+    unshift @INC, "$FindBin::RealBin/../lib";
+    shift @ARGV;
+  }
   exec $^X, (map {( -I => $_)} @INC), -T => $0, @ARGV unless ${^TAINT};
   foreach ($0, @ARGV) { ($_) = /^(.*)$/ } # bulk untaint of trusted environment
 }
@@ -23,9 +28,14 @@ plack_serve - serve a directory of static files using Plack
 
 =head1 SYNOPSIS
 
+ # when installed with findable libs
  $ plack_serve ~/www/site
  HTTP::Server::PSGI: Accepting connections at http://0:5000/
  [... access_log follows ...]
+
+ # run from clone
+ $ bin/plack_serve -l ~/www/site
+ ...
 
 =head1 DESCRIPTION
 
@@ -45,7 +55,7 @@ This code is a quick bodge.
  This file is part of plack-middlewares-jbrowse which extends Plack to
  support the needs of JBrowse.
 
- Copyright (c) 2015 Genome Research Ltd.
+ Copyright (c) 2015, 2016 Genome Research Ltd.
 
  Author: Matthew Astley <mca@sanger.ac.uk>
 
